@@ -3,7 +3,31 @@ from google import genai
 from dotenv import load_dotenv
 import os
 import time
-from google.genai.errors import ServerError
+from google.genai.errors import ServerError, ClientError
+
+def generate_with_fallback(prompt: str, max_retries: int = 2):
+    """
+    Try preview model first, fallback to stable model on overload or rate limit.
+    """
+    # ---- Try primary (preview) model ----
+    for attempt in range(1, max_retries + 1):
+        try:
+            return client.models.generate_content(
+                model=PRIMARY_MODEL,
+                contents=prompt
+            )
+        except (ServerError, ClientError) as e:
+            if attempt < max_retries:
+                time.sleep(1.5 * attempt)
+            else:
+                break
+
+    # ---- Fallback to stable model ----
+    return client.models.generate_content(
+        model=FALLBACK_MODEL,
+        contents=prompt
+    )
+
 
 # Load environment variables from .env
 load_dotenv()
@@ -12,7 +36,9 @@ load_dotenv()
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 # Use Gemini 3 Flash Preview (fast + free-tier friendly when enabled)
-MODEL_NAME = "models/gemini-3-flash-preview"
+PRIMARY_MODEL = "models/gemini-3-flash-preview"
+FALLBACK_MODEL = "models/gemini-flash-latest"
+
 
 
 def extract_text(response) -> str:
