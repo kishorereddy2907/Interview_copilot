@@ -1,23 +1,41 @@
 import streamlit as st
-import json
 import os
+import json
+import time
+
 from resume_parser import parse_resume
 from interview_engine import InterviewEngine
+from speech_listener import listen_stream
 
-# ---------------------------
+# -------------------------------------------------
 # Page config
-# ---------------------------
+# -------------------------------------------------
 st.set_page_config(
     page_title="AI Interview Copilot",
     layout="centered"
 )
 
 st.title("🧠 AI Interview Copilot")
-st.caption("Simulation & Copilot Mode | Gemini-powered")
+st.caption("Copilot & Simulation Mode | Live Speech-to-Text")
 
-# ---------------------------
-# Sidebar controls
-# ---------------------------
+# -------------------------------------------------
+# Session state init
+# -------------------------------------------------
+if "engine" not in st.session_state:
+    st.session_state.engine = None
+
+if "listening" not in st.session_state:
+    st.session_state.listening = False
+
+if "live_text" not in st.session_state:
+    st.session_state.live_text = ""
+
+if "final_question" not in st.session_state:
+    st.session_state.final_question = ""
+
+# -------------------------------------------------
+# Sidebar
+# -------------------------------------------------
 with st.sidebar:
     st.header("Mode")
     mode = st.radio(
@@ -27,7 +45,6 @@ with st.sidebar:
 
     st.markdown("---")
 
-    st.header("Interview Settings")
     interview_type = st.selectbox(
         "Interview Type",
         ["technical", "hr"]
@@ -36,84 +53,117 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown(
-        "**How to use**\n"
-        "- Upload your resume\n"
-        "- Select mode\n"
-        "- In Copilot mode, paste interviewer question\n"
-        "- Generate answer\n"
+        "**Usage**\n"
+        "- Upload resume\n"
+        "- In Copilot mode, click 🎤 Listen\n"
+        "- Speak interviewer question\n"
+        "- Edit if needed\n"
+        "- Generate answer"
     )
 
-# ---------------------------
+# -------------------------------------------------
 # Resume upload
-# ---------------------------
+# -------------------------------------------------
 resume_file = st.file_uploader(
     "Upload your resume (PDF or DOCX)",
     type=["pdf", "docx"]
 )
 
-if resume_file:
-    os.makedirs("resume", exist_ok=True)
-    resume_path = os.path.join("resume", resume_file.name)
+if not resume_file:
+    st.info("Please upload a resume to begin.")
+    st.stop()
 
-    with open(resume_path, "wb") as f:
-        f.write(resume_file.getbuffer())
+os.makedirs("resume", exist_ok=True)
+resume_path = os.path.join("resume", resume_file.name)
 
-    resume_text = parse_resume(resume_path)
+with open(resume_path, "wb") as f:
+    f.write(resume_file.getbuffer())
 
-    if "engine" not in st.session_state:
-        st.session_state.engine = InterviewEngine(
-            resume_context=resume_text,
-            interview_type=interview_type
-        )
+resume_text = parse_resume(resume_path)
 
-    st.success("Resume loaded successfully")
-
-    # ---------------------------
-    # Copilot mode: interviewer question input
-    # ---------------------------
-    interviewer_question = ""
-
-    if mode == "Copilot (Live Interview)":
-        interviewer_question = st.text_area(
-            "Interviewer Question",
-            placeholder="Question asked by interviewer will appear here...",
-            height=120
-        )
-
-    # ---------------------------
-    # Answer style control
-    # ---------------------------
-    answer_style = st.selectbox(
-        "Answer Style",
-        ["Short", "Medium", "Detailed"]
+if st.session_state.engine is None:
+    st.session_state.engine = InterviewEngine(
+        resume_context=resume_text,
+        interview_type=interview_type
     )
 
-    # ---------------------------
-    # Button label based on mode
-    # ---------------------------
-    button_label = (
-        "Generate Answer"
-        if mode == "Copilot (Live Interview)"
-        else "Ask Next Question"
+st.success("Resume loaded")
+
+engine = st.session_state.engine
+
+# -------------------------------------------------
+# COPILOT MODE (Live Interview)
+# -------------------------------------------------
+if mode == "Copilot (Live Interview)":
+
+    st.subheader("🎧 Live Interview Copilot")
+
+    col1, col2 = st.columns([1, 3])
+
+    with col1:
+        if st.button("🎤 Listen"):
+            st.session_state.listening = True
+            st.session_state.live_text = ""
+            st.session_state.final_question = ""
+
+    with col2:
+        st.caption("Live transcription (auto-stops on silence)")
+
+    live_box = st.empty()
+
+    # ---- Streaming STT ----
+    if st.session_state.listening:
+        for text in listen_stream():
+            st.session_state.live_text = text
+            live_box.text_area(
+                "Listening…",
+                value=st.session_state.live_text,
+                height=120
+            )
+            time.sleep(0.05)
+
+        # Silence detected → lock question
+        st.session_state.final_question = st.session_state.live_text
+        st.session_state.listening = False
+
+    interviewer_question = st.text_area(
+        "Interviewer Question (editable)",
+        value=st.session_state.final_question,
+        height=120
     )
 
-    # ---------------------------
-    # Main action
-    # ---------------------------
-    if st.button(button_label):
-        engine = st.session_state.engine
+    if st.button("Generate Answer"):
+        if not interviewer_question.strip():
+            st.warning("Please provide an interview question.")
+            st.stop()
 
         try:
-            # Determine question source
-            if mode == "Copilot (Live Interview)":
-                if not interviewer_question.strip():
-                    st.warning("Please enter the interviewer's question.")
-                    st.stop()
-                question = interviewer_question
-            else:
-                question = engine.ask_question()
+            answer = engine.generate_answer(interviewer_question)
 
-            # Generate answer
+            st.markdown("### 🧑‍💼 Interview Question")
+            st.write(interviewer_question)
+
+            st.markdown("### 🤖 Suggested Answer")
+            st.write(answer)
+
+            with open("sessions.json", "w", encoding="utf-8") as f:
+                json.dump(engine.history, f, indent=2)
+
+        except Exception:
+            st.error(
+                "⚠️ The AI is temporarily busy. "
+                "Please wait a moment and try again."
+            )
+
+# -------------------------------------------------
+# SIMULATION MODE (Practice)
+# -------------------------------------------------
+else:
+    st.subheader("🧪 Interview Simulation")
+
+    if st.button("Ask Next Question"):
+        try:
+            question = engine.ask_question()
             answer = engine.generate_answer(question)
 
             st.markdown("### 🧑‍💼 Interview Question")
@@ -122,14 +172,11 @@ if resume_file:
             st.markdown("### 🤖 Suggested Answer")
             st.write(answer)
 
-            # Save session history
             with open("sessions.json", "w", encoding="utf-8") as f:
                 json.dump(engine.history, f, indent=2)
 
         except Exception:
             st.error(
-                "⚠️ The AI is busy. Retrying with a backup model. Please wait a moment."
+                "⚠️ The AI is temporarily busy. "
+                "Please wait a moment and try again."
             )
-
-else:
-    st.info("Please upload a resume to begin.")
