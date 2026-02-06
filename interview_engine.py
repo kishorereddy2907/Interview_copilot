@@ -12,26 +12,18 @@ load_dotenv()
 
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
-# Primary = fast preview (may overload)
+PRIMARY_MODEL = "models/gemini-flash-latest"
 FALLBACK_MODEL = "models/gemini-3-flash-preview"
 
-# Fallback = stable free-tier model
-PRIMARY_MODEL = "models/gemini-flash-latest"
-
 
 # -------------------------------------------------
-# Response text extraction (preview-safe)
+# Response text extraction
 # -------------------------------------------------
 def extract_text(response) -> str:
-    """
-    Safely extract text from Gemini responses across
-    preview and stable models.
-    """
-    # Case 1: Convenience field
+    """Safely extract text from Gemini responses."""
     if hasattr(response, "text") and response.text:
         return response.text.strip()
 
-    # Case 2: Structured response (preview models)
     if hasattr(response, "candidates"):
         for candidate in response.candidates:
             if hasattr(candidate, "content") and candidate.content:
@@ -46,34 +38,22 @@ def extract_text(response) -> str:
 # Gemini call with retry + fallback
 # -------------------------------------------------
 def generate_with_fallback(prompt: str, max_retries: int = 2):
-    """
-    1. Try preview model with retries
-    2. On overload / rate limit → fallback to stable model
-    """
-    # ---- Try primary (preview) model ----
+    """Try primary model with retries then fallback."""
     for attempt in range(1, max_retries + 1):
         try:
-            # return client.models.generate_content(
-            #     model=PRIMARY_MODEL,
-            #     contents=prompt
-            # )
-            return client.models.generate_content_stream(
+            return client.models.generate_content(
                 model=PRIMARY_MODEL,
-                contents=prompt
+                contents=prompt,
             )
-            for chunk in stream:
-                if chunk.text:
-                    print(chunk.text, end="", flush=True)
         except (ServerError, ClientError):
             if attempt < max_retries:
                 time.sleep(1.5 * attempt)
             else:
                 break
 
-    # ---- Fallback to stable model ----
     return client.models.generate_content(
         model=FALLBACK_MODEL,
-        contents=prompt
+        contents=prompt,
     )
 
 
@@ -91,41 +71,63 @@ class InterviewEngine:
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
 
-    # -------------------------------------------------
-    # Simulation mode: AI asks question
-    # -------------------------------------------------
     def ask_question(self) -> str:
         prompt = self._load_prompt("prompts/interviewer.txt").format(
             interview_type=self.interview_type,
-            resume_context=self.resume_context
+            resume_context=self.resume_context,
         )
 
         response = generate_with_fallback(prompt)
         question = extract_text(response)
 
-        self.history.append({
-            "turn": self.turn,
-            "question": question,
-            "timestamp": datetime.utcnow().isoformat()
-        })
+        self.history.append(
+            {
+                "turn": self.turn,
+                "question": question,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+        )
 
         self.turn += 1
         return question
 
-    # -------------------------------------------------
-    # Copilot mode: AI answers interviewer question
-    # -------------------------------------------------
-    def generate_answer(self, question: str) -> str:
+    def generate_answer(
+        self,
+        question: str,
+        answer_style: str = "concise",
+        include_follow_up: bool = True,
+    ) -> str:
         prompt = self._load_prompt("prompts/answer_generator.txt").format(
             resume_context=self.resume_context,
-            question=question
+            question=question,
+            answer_style=answer_style,
+            include_follow_up="yes" if include_follow_up else "no",
         )
 
         response = generate_with_fallback(prompt)
         answer = extract_text(response)
 
-        # Attach answer to last turn if exists
         if self.history:
             self.history[-1]["answer"] = answer
+        else:
+            self.history.append(
+                {
+                    "turn": self.turn,
+                    "question": question,
+                    "answer": answer,
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
+            self.turn += 1
 
         return answer
+
+    def suggest_follow_up(self, question: str, answer: str) -> str:
+        prompt = self._load_prompt("prompts/followup_generator.txt").format(
+            interview_type=self.interview_type,
+            resume_context=self.resume_context,
+            question=question,
+            answer=answer,
+        )
+        response = generate_with_fallback(prompt)
+        return extract_text(response)
