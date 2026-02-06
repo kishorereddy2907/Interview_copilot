@@ -1,1 +1,1 @@
-# local-ai-interview-copilot
+# Interview_copilot
