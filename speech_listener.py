@@ -1,25 +1,43 @@
 import queue
 import json
 import time
-import sounddevice as sd
-from vosk import Model, KaldiRecognizer
 
-# Path to Vosk model
+try:
+    from vosk import Model, KaldiRecognizer
+    VOSK_IMPORT_ERROR = None
+except Exception as exc:  # pragma: no cover - environment dependent
+    Model = None
+    KaldiRecognizer = None
+    VOSK_IMPORT_ERROR = str(exc)
+
+try:
+    import sounddevice as sd
+    STT_IMPORT_ERROR = None
+except Exception as exc:  # pragma: no cover - environment dependent
+    sd = None
+    STT_IMPORT_ERROR = str(exc)
+
 VOSK_MODEL_PATH = "vosk_model"
-
-# Audio config
 SAMPLE_RATE = 16000
 BLOCK_SIZE = 8000
 
-# Load model once
-model = Model(VOSK_MODEL_PATH)
+model = Model(VOSK_MODEL_PATH) if Model is not None else None
+
+
+def stt_available() -> tuple[bool, str]:
+    """Return whether live microphone STT can run in current environment."""
+    if Model is None or KaldiRecognizer is None:
+        return False, f"vosk import failed: {VOSK_IMPORT_ERROR}"
+    if sd is None:
+        return False, f"sounddevice import failed: {STT_IMPORT_ERROR}"
+    return True, ""
 
 
 def listen_stream(silence_timeout: float = 1.2, max_duration: float = 30.0):
-    """
-    Generator that yields partial transcription text while listening.
-    Stops when silence is detected or max_duration is reached.
-    """
+    available, reason = stt_available()
+    if not available:
+        raise RuntimeError(f"Live STT unavailable: {reason}")
+
     q = queue.Queue()
     recognizer = KaldiRecognizer(model, SAMPLE_RATE)
     recognizer.SetWords(False)
@@ -40,17 +58,13 @@ def listen_stream(silence_timeout: float = 1.2, max_duration: float = 30.0):
         channels=1,
         callback=callback,
     ):
-        print("🎤 Listening (streaming)...")
-
         while True:
-            # Stop if max duration exceeded
             if time.time() - start_time > max_duration:
                 break
 
             try:
                 data = q.get(timeout=0.1)
             except queue.Empty:
-                # Silence detection
                 if time.time() - last_text_time > silence_timeout:
                     break
                 continue
@@ -68,15 +82,11 @@ def listen_stream(silence_timeout: float = 1.2, max_duration: float = 30.0):
                     last_text_time = time.time()
                     yield (final_text + " " + partial).strip()
 
-    # Emit final result once more (if any)
     if final_text.strip():
         yield final_text.strip()
 
 
 def listen_once_streamed() -> str:
-    """
-    Convenience wrapper: consumes the stream and returns final text.
-    """
     last = ""
     for chunk in listen_stream():
         last = chunk
