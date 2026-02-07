@@ -4,7 +4,7 @@ import json
 import time
 
 from resume_parser import parse_resume
-from interview_engine import InterviewEngine
+from interview_engine import InterviewEngine, AIServiceError
 from speech_listener import listen_stream, stt_available
 
 st.set_page_config(page_title="AI Interview Copilot", layout="centered")
@@ -135,6 +135,9 @@ if mode == "Copilot (Live Interview)":
             render_streamed_answer(interviewer_question)
             with open("sessions.json", "w", encoding="utf-8") as f:
                 json.dump(engine.history, f, indent=2)
+        except AIServiceError as exc:
+            st.error(f"⚠️ {exc}")
+            st.info("Update GEMINI_API_KEY in your .env file, then restart Streamlit.")
         except Exception as exc:
             st.error(f"⚠️ AI error: {exc}")
 
@@ -147,5 +150,8 @@ else:
             render_streamed_answer(question)
             with open("sessions.json", "w", encoding="utf-8") as f:
                 json.dump(engine.history, f, indent=2)
+        except AIServiceError as exc:
+            st.error(f"⚠️ {exc}")
+            st.info("Update GEMINI_API_KEY in your .env file, then restart Streamlit.")
         except Exception as exc:
             st.error(f"⚠️ AI error: {exc}")
