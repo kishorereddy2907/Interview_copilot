@@ -1,1 +1,8 @@
-[]
+[
+  {
+    "turn": 0,
+    "question": "tell me about your self",
+    "answer": "**Main Answer**\nI am an AI Engineer with four and a half years of experience specializing in Generative AI and Agentic workflows. Currently, at PwC, I design enterprise-grade systems like multi-agent SQL platforms and automated clinical trial digitization pipelines using AWS and Azure. My background spans from building traditional machine learning models at Infosys to developing cutting-edge RAG systems and autonomous agentic tools. I focus on transforming complex data into actionable business intelligence through scalable, cloud-native AI solutions.\n\n**Talking Points**\n* Specialized in Generative AI, Agentic workflows, and LLM orchestration frameworks.\n* Developed high-impact AI solutions for pharma and regulatory compliance sectors.\n* Proficient in Python, cloud-native deployment, and end-to-end AI pipeline architecture.\n\nI am eager to apply my expertise in Agentic AI to drive innovation for your team.\n\n**Likely follow-up:**\n\"Can you dive deeper into the multi-agent architecture you used for the SQL Agent project?\"",
+    "timestamp": "2026-02-07T05:30:52.631711"
+  }
+]

@@ -31,8 +31,8 @@ def get_client():
 
     return _client
 
-PRIMARY_MODEL = "models/gemini-flash-latest"
-FALLBACK_MODEL = "models/gemini-3-flash-preview"
+FALLBACK_MODEL = "models/gemini-flash-latest"
+PRIMARY_MODEL = "models/gemini-3-flash-preview"
 
 
 def _format_client_error(exc: Exception) -> AIServiceError:
