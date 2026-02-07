@@ -14,9 +14,6 @@ PRIMARY_MODEL = "models/gemini-flash-latest"
 FALLBACK_MODEL = "models/gemini-3-flash-preview"
 
 
-# -------------------------------------------------
-# Response text extraction
-# -------------------------------------------------
 def extract_text(response) -> str:
     """Safely extract text from Gemini responses."""
     if hasattr(response, "text") and response.text:
@@ -102,6 +99,38 @@ class InterviewEngine:
         self.turn += 1
         return question
 
+    def stream_answer(
+        self,
+        question: str,
+        answer_style: str = "concise",
+        include_follow_up: bool = True,
+    ) -> Generator[str, None, None]:
+        prompt = self._load_prompt("prompts/answer_generator.txt").format(
+            resume_context=self.resume_context,
+            question=question,
+            answer_style=answer_style,
+            include_follow_up="yes" if include_follow_up else "no",
+        )
+
+        full_answer = ""
+        for chunk in stream_with_fallback(prompt):
+            full_answer += chunk
+            yield chunk
+
+        answer = full_answer.strip()
+        if self.history:
+            self.history[-1]["answer"] = answer
+        else:
+            self.history.append(
+                {
+                    "turn": self.turn,
+                    "question": question,
+                    "answer": answer,
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
+            self.turn += 1
+
     def generate_answer(
         self,
         question: str,
@@ -140,5 +169,5 @@ class InterviewEngine:
             question=question,
             answer=answer,
         )
-        response = generate_with_fallback(prompt)
+        response = generate_with_fallback(prompt, max_retries=1)
         return extract_text(response)

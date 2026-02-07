@@ -43,7 +43,7 @@ with st.sidebar:
         "- In Copilot mode, click 🎤 Listen\n"
         "- Speak interviewer question\n"
         "- Edit if needed\n"
-        "- Generate answer + follow-up prep"
+        "- Generate answer (streaming)"
     )
 
 resume_file = st.file_uploader("Upload your resume (PDF or DOCX)", type=["pdf", "docx"])
@@ -65,6 +65,36 @@ if st.session_state.engine is None or st.session_state.engine.interview_type != 
 
 st.success("Resume loaded")
 engine = st.session_state.engine
+
+# Always define STT flags to avoid NameError in partially-updated environments
+stt_is_ready = False
+stt_error = "STT check not executed"
+try:
+    stt_is_ready, stt_error = stt_available()
+except Exception as exc:
+    stt_is_ready = False
+    stt_error = f"STT initialization failed: {exc}"
+
+
+def render_streamed_answer(question: str):
+    st.markdown("### 🧑‍💼 Interview Question")
+    st.write(question)
+    st.markdown("### 🤖 Suggested Answer (Streaming)")
+
+    answer_placeholder = st.empty()
+    full_answer = ""
+    for chunk in engine.stream_answer(
+        question,
+        answer_style=answer_style,
+        include_follow_up=include_follow_up,
+    ):
+        full_answer += chunk
+        answer_placeholder.markdown(full_answer)
+
+    if include_follow_up:
+        st.markdown("### 🔮 Likely Follow-up & Prep")
+        st.write(engine.suggest_follow_up(question, full_answer))
+
 
 if mode == "Copilot (Live Interview)":
     st.subheader("🎧 Live Interview Copilot")
@@ -102,30 +132,11 @@ if mode == "Copilot (Live Interview)":
             st.stop()
 
         try:
-            answer = engine.generate_answer(
-                interviewer_question,
-                answer_style=answer_style,
-                include_follow_up=include_follow_up,
-            )
-            followup_pack = engine.suggest_follow_up(interviewer_question, answer)
-
-            tab1, tab2 = st.tabs(["Suggested Answer", "Follow-up Prep"])
-            with tab1:
-                st.markdown("### 🧑‍💼 Interview Question")
-                st.write(interviewer_question)
-                st.markdown("### 🤖 Suggested Answer")
-                st.write(answer)
-            with tab2:
-                st.markdown("### 🔮 Next Question Prep")
-                st.write(followup_pack)
-
+            render_streamed_answer(interviewer_question)
             with open("sessions.json", "w", encoding="utf-8") as f:
                 json.dump(engine.history, f, indent=2)
         except Exception as exc:
             st.error(f"⚠️ AI error: {exc}")
-
-        except Exception:
-            st.error("⚠️ The AI is temporarily busy. Please wait a moment and try again.")
 
 else:
     st.subheader("🧪 Interview Simulation")
@@ -133,24 +144,8 @@ else:
     if st.button("Ask Next Question"):
         try:
             question = engine.ask_question()
-            answer = engine.generate_answer(
-                question,
-                answer_style=answer_style,
-                include_follow_up=include_follow_up,
-            )
-            followup_pack = engine.suggest_follow_up(question, answer)
-
-            st.markdown("### 🧑‍💼 Interview Question")
-            st.write(question)
-
-            st.markdown("### 🤖 Suggested Answer")
-            st.write(answer)
-
-            st.markdown("### 🔮 Likely Follow-up & Prep")
-            st.write(followup_pack)
-
+            render_streamed_answer(question)
             with open("sessions.json", "w", encoding="utf-8") as f:
                 json.dump(engine.history, f, indent=2)
-
-        except Exception:
-            st.error("⚠️ The AI is temporarily busy. Please wait a moment and try again.")
+        except Exception as exc:
+            st.error(f"⚠️ AI error: {exc}")
