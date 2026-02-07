@@ -5,7 +5,7 @@ import time
 
 from resume_parser import parse_resume
 from interview_engine import InterviewEngine
-from speech_listener import listen_stream
+from speech_listener import listen_stream, stt_available
 
 st.set_page_config(page_title="AI Interview Copilot", layout="centered")
 
@@ -71,12 +71,15 @@ if mode == "Copilot (Live Interview)":
 
     col1, col2 = st.columns([1, 3])
     with col1:
-        if st.button("🎤 Listen"):
+        if st.button("🎤 Listen", disabled=not stt_is_ready):
             st.session_state.listening = True
             st.session_state.live_text = ""
             st.session_state.final_question = ""
     with col2:
         st.caption("Live transcription (auto-stops on silence)")
+
+    if not stt_is_ready:
+        st.warning(f"Live STT unavailable in this environment: {stt_error}")
 
     live_box = st.empty()
 
@@ -118,6 +121,8 @@ if mode == "Copilot (Live Interview)":
 
             with open("sessions.json", "w", encoding="utf-8") as f:
                 json.dump(engine.history, f, indent=2)
+        except Exception as exc:
+            st.error(f"⚠️ AI error: {exc}")
 
         except Exception:
             st.error("⚠️ The AI is temporarily busy. Please wait a moment and try again.")

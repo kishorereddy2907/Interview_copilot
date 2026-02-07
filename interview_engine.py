@@ -1,13 +1,11 @@
 from datetime import datetime
 import os
 import time
+from typing import Generator
 from dotenv import load_dotenv
 from google import genai
 from google.genai.errors import ServerError, ClientError
 
-# -------------------------------------------------
-# Environment & Client
-# -------------------------------------------------
 load_dotenv()
 
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
@@ -34,9 +32,6 @@ def extract_text(response) -> str:
     raise ValueError("No text content found in Gemini response")
 
 
-# -------------------------------------------------
-# Gemini call with retry + fallback
-# -------------------------------------------------
 def generate_with_fallback(prompt: str, max_retries: int = 2):
     """Try primary model with retries then fallback."""
     for attempt in range(1, max_retries + 1):
@@ -47,7 +42,7 @@ def generate_with_fallback(prompt: str, max_retries: int = 2):
             )
         except (ServerError, ClientError):
             if attempt < max_retries:
-                time.sleep(1.5 * attempt)
+                time.sleep(0.6 * attempt)
             else:
                 break
 
@@ -57,9 +52,25 @@ def generate_with_fallback(prompt: str, max_retries: int = 2):
     )
 
 
-# -------------------------------------------------
-# Interview Engine
-# -------------------------------------------------
+def stream_with_fallback(prompt: str) -> Generator[str, None, None]:
+    """Stream partial text for faster perceived response."""
+    stream = None
+    try:
+        stream = client.models.generate_content_stream(
+            model=PRIMARY_MODEL,
+            contents=prompt,
+        )
+    except (ServerError, ClientError):
+        stream = client.models.generate_content_stream(
+            model=FALLBACK_MODEL,
+            contents=prompt,
+        )
+
+    for chunk in stream:
+        if hasattr(chunk, "text") and chunk.text:
+            yield chunk.text
+
+
 class InterviewEngine:
     def __init__(self, resume_context: str, interview_type: str = "technical"):
         self.resume_context = resume_context
