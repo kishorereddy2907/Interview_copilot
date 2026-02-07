@@ -9,16 +9,27 @@ from google.genai.errors import ServerError, ClientError
 
 load_dotenv()
 
+_client = None
+_client_api_key = None
+
 
 class AIServiceError(RuntimeError):
     """Raised for user-actionable Gemini API issues."""
 
 
 def get_client():
+    """Reuse a live Gemini client so streaming requests are not tied to temporary objects."""
+    global _client, _client_api_key
+
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise AIServiceError("GEMINI_API_KEY is missing. Add a valid API key in your .env file.")
-    return genai.Client(api_key=api_key)
+
+    if _client is None or _client_api_key != api_key:
+        _client = genai.Client(api_key=api_key)
+        _client_api_key = api_key
+
+    return _client
 
 PRIMARY_MODEL = "models/gemini-flash-latest"
 FALLBACK_MODEL = "models/gemini-3-flash-preview"
