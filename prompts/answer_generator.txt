@@ -17,9 +17,15 @@ Rules:
 - Prefer STAR structure when the question is behavioral.
 - Keep language interview-appropriate and easy to speak aloud.
 
+Style handling:
+- If answer_style is "short & crisp (interview-ready)", keep the response brief and spoken-ready:
+  - Main answer: 60-90 words max
+  - Talking points: exactly 3 bullets, each under 12 words
+  - End with one confident closing line
+
 Output format:
 1) Main answer
-2) 2-4 concise talking points
+2) 2-4 concise talking points (or exactly 3 for short & crisp mode)
 3) If include_follow_up=yes, add "Likely follow-up:" with one probable next question.
 
 Generate the response now.

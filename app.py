@@ -31,8 +31,8 @@ with st.sidebar:
     st.markdown("---")
     answer_style = st.selectbox(
         "Answer style",
-        ["concise", "detailed", "executive", "storytelling (STAR)"],
-        help="Tune the answer to match the pace and tone of your interview.",
+        ["short & crisp (interview-ready)", "concise", "detailed", "executive", "storytelling (STAR)"],
+        help="Use short & crisp mode for interview-ready answers you can speak quickly.",
     )
     include_follow_up = st.toggle("Include likely follow-up", value=True)
 
