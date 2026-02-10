@@ -26,6 +26,7 @@ with st.sidebar:
     mode = st.radio("Select Mode", ["Copilot (Live Interview)", "Simulation (Practice)"])
 
     st.markdown("---")
+    ai_service = st.selectbox("AI Service", ["gemini", "openai"])
     interview_type = st.selectbox("Interview Type", ["technical", "hr"])
 
     st.markdown("---")
@@ -60,20 +61,20 @@ with open(resume_path, "wb") as f:
 
 resume_text = parse_resume(resume_path)
 
-if st.session_state.engine is None or st.session_state.engine.interview_type != interview_type:
-    st.session_state.engine = InterviewEngine(resume_context=resume_text, interview_type=interview_type)
+if st.session_state.engine is None or st.session_state.engine.interview_type != interview_type or st.session_state.engine.ai_service != ai_service:
+    st.session_state.engine = InterviewEngine(resume_context=resume_text, interview_type=interview_type, ai_service=ai_service)
 
 st.success("Resume loaded")
 engine = st.session_state.engine
 
 # Always define STT flags to avoid NameError in partially-updated environments
-stt_is_ready = False
-stt_error = "STT check not executed"
-try:
-    stt_is_ready, stt_error = stt_available()
-except Exception as exc:
-    stt_is_ready = False
-    stt_error = f"STT initialization failed: {exc}"
+stt_service_available, stt_service_name = stt_available()
+
+if stt_service_available:
+    stt_selection = st.selectbox("Select STT Service", [stt_service_name, "vosk"] if stt_service_name == "azure" else [stt_service_name])
+else:
+    stt_selection = None
+    st.warning(f"No STT service available: {stt_service_name}")
 
 
 def render_streamed_answer(question: str):
@@ -101,20 +102,20 @@ if mode == "Copilot (Live Interview)":
 
     col1, col2 = st.columns([1, 3])
     with col1:
-        if st.button("🎤 Listen", disabled=not stt_is_ready):
+        if st.button("🎤 Listen", disabled=not stt_service_available):
             st.session_state.listening = True
             st.session_state.live_text = ""
             st.session_state.final_question = ""
     with col2:
         st.caption("Live transcription (auto-stops on silence)")
 
-    if not stt_is_ready:
-        st.warning(f"Live STT unavailable in this environment: {stt_error}")
+    if not stt_service_available:
+        st.warning(f"Live STT unavailable in this environment: {stt_service_name}")
 
     live_box = st.empty()
 
     if st.session_state.listening:
-        for text in listen_stream():
+        for text in listen_stream(stt_service=stt_selection):
             st.session_state.live_text = text
             live_box.text_area("Listening…", value=st.session_state.live_text, height=120)
             time.sleep(0.05)
